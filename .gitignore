@@ -50,3 +50,7 @@ __pycache__/
 
 # check-gate-cache.mjs local gate cache (delete to force every cached gate to re-run)
 .gates-cache.json
+
+# plan-tree ledger under docs/plantree must be tracked (global plans/ rule above is for other tools)
+!docs/plantree/plans/
+!docs/plantree/plans/**
