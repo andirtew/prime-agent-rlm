@@ -5,7 +5,7 @@
 
 | Plan | Status | Current Phase | Last Landed | Next Target |
 |---|---|---|---|---|
-| tui-wheel-scroll-ctrl-end | In Progress | 阶段1 计划 | — | 阶段2 建 active 分支与 worktree |
+| tui-wheel-scroll-ctrl-end | Done（已合并归档） | 闭环完成 | merge `39207b99d` → archive `2f722930d` | 等用户确认是否向 Dmatut7 开 PR |
 
 ## 阅读顺序
 

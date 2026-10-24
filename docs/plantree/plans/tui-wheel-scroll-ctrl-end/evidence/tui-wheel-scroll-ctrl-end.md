@@ -39,3 +39,12 @@
 ## 后续
 
 - 阶段5-8：合并 fork main、归档、推送；PR（等用户确认是否向 Dmatut7 发）。
+
+## 落地（2026-10-24，阶段8 于 main 记录）
+
+- SOURCE_TIP：`2f722930dcce17df1351ea9997d3fd1f4fdb875a`（active 最终 commit，pre-commit 全链绿）
+- MERGE_COMMIT：`39207b99d40e3d9983aba1cec94c9a90f84ccd38`（`merge: 合并 active/tui-wheel-scroll-ctrl-end`，tree 等价校验 ✓，远端 ls-remote 核对一致）
+- 归档：`archive/tui-wheel-scroll-ctrl-end` → `2f722930d`（四方核对 4/4 OK；本地/远端 active 分支与 worktree 已删除）
+- 独立复核：实现期逐项对照上游 f1927c2d5 与计划 Scope（13 文件全部在册、WHEEL_SCROLL_LINES 零残留、bundle 含三新标识）；门禁矩阵见上节
+- 附加修复（随功能 commit 入库）：`scripts/check-display-reconciliation.mjs` 的 git spawn 剥离 hook 导出的 GIT_DIR/GIT_INDEX_FILE/GIT_WORK_TREE——修复前该 self-test 在 pre-commit 环境必红且其 fixture 会污染宿主仓库（本次事故实证：HEAD 曾被插垃圾 commit 链、共享 config 的 core.bare 被改 true、index 被清空，均已恢复）
+- 待用户后续：确认是否向 Dmatut7 开 PR；实测 --dist 手感（滚轮/ctrl+end）
