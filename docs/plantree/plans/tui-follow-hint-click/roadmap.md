@@ -2,9 +2,11 @@
 
 ## Done
 
+- [x] 阶段0-8 全链：实现（hint 登记 click entry）→ 1570 测试全过（含 2 新用例）→ pre-commit 全链绿 → 合并 `9e92921fc`（tree 等价 ✓）→ 归档 `archive/tui-follow-hint-click` → 清理 → 落地
+
 ## In Progress
 
-- [ ] 阶段2-8：active 分支实现 → 测试 → 复核 → 合并 → 归档 → 清理 → 落地
+（无）
 
 ## Next
 

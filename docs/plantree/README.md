@@ -6,6 +6,7 @@
 | Plan | Status | Current Phase | Last Landed | Next Target |
 |---|---|---|---|---|
 | tui-wheel-scroll-ctrl-end | Done（已合并归档） | 闭环完成 | merge `39207b99d` → archive `2f722930d` | 等用户确认是否向 Dmatut7 开 PR |
+| tui-follow-hint-click | Done（已合并归档） | 闭环完成 | merge `9e92921fc` → archive `432b24e2f` | 同上，可并入同一 PR |
 
 ## 阅读顺序
 
