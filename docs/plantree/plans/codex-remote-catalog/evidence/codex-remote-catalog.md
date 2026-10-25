@@ -22,3 +22,13 @@
 - 新测试 `openai-codex-remote-catalog.test.ts`：11/11（merge 语义 2、缓存读取 2、刷新 7：TTL 短路/etag 重验证+写盘/304 保缓存/网络回落/空目录不清缓存/并发去重/离线）
 - 回归：model-registry 72 + audit/schema-drift 12 + settings-manager 85 全过
 - 待 commit：pre-commit 全链 + npm run build
+
+## 审查与落地（2026-10-25）
+
+- 独立审查（百炼/kimi-k3，prime CLI --print 非交互）：首轮 **FAIL**——必修：merge 时机在用户 overrides/custom models 之后（用户配置被静默丢弃）；另 5 低危（负缓存缺失/checkedAt 未来无校验/重复 id/死字段/测试风格）
+- 修复：merge 移入 loadBuiltInModels（overrides 之前，对齐 prime-inference 范式）+ 负缓存 + isPlausibleCheckedAt 双读路径 + payload 去重 + lastModified 死字段清理 + 测试转 vitest；新增用户覆盖优先的集成回归用例（models.json 自定义 gpt-5.1 cost=7 压过目录条目 99）
+- 复审（kimi-k3）：**PASS**；采纳其一行加固建议（raw 读路径同校验），第三个 commit
+- 期间另修实现期自抓 bug：pending 去重链 unhandledRejection
+- SOURCE_TIP：`6bd829f9714837b3321add1bc4c79f1ed72c43b9`（3 commit：feat + fix(审查) + fix(一行加固)，pre-commit 全链绿）
+- MERGE_COMMIT：`cd33eca67`（tree 等价 ✓，远端核对一致）；归档 `archive/codex-remote-catalog` 四方核对 OK；active 分支与 worktree 已清理
+- 不提 PR（纯自用）；CHANGELOG 直写 [Unreleased]（fork 的 .changes/ fragment 规则为上游 PR 流程，自用分支不适用）
