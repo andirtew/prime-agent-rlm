@@ -2,8 +2,10 @@ import assert from "node:assert";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, it } from "node:test";
 import type { Api, Model } from "@earendil-works/pi-ai";
+import { afterEach, describe, it } from "vitest";
+import { AuthStorage } from "../src/core/auth-storage.js";
+import { ModelRegistry } from "../src/core/model-registry.js";
 import {
 	mergeCodexCatalogModels,
 	readCachedCodexCatalog,
@@ -197,6 +199,42 @@ describe("refreshCodexRemoteCatalog", () => {
 			stillCatalog?.some((model) => model.id === "gpt-6-astra"),
 			"an empty remote catalog does not erase the cache",
 		);
+		// Negative caching: the empty fetch refreshed checkedAt, so the next refresh
+		// short-circuits without touching the network.
+		let emptyRequests = 0;
+		const countingFetch = async () => {
+			emptyRequests++;
+			return fakeResponse([]);
+		};
+		await refreshCodexRemoteCatalog(path, bundled, { fetchFn: countingFetch });
+		assert.strictEqual(emptyRequests, 0, "an empty catalog is not re-requested within the TTL");
+	});
+
+	it("deduplicates repeated ids in one catalog payload", async () => {
+		const dir = cacheDir();
+		const path = join(dir, "cache.json");
+		const fetchFn = async () =>
+			fakeResponse([
+				catalogModel("gpt-6-astra", { name: "First" }),
+				catalogModel("gpt-6-astra", { name: "Second" }),
+			]);
+		const models = await refreshCodexRemoteCatalog(path, bundled, { fetchFn });
+		assert.strictEqual(models?.length, 1, "one entry per id");
+		assert.strictEqual(models?.[0]?.name, "Second", "the later entry wins");
+	});
+
+	it("rejects a cache whose checkedAt is in the future", () => {
+		const dir = cacheDir();
+		const path = join(dir, "cache.json");
+		writeFileSync(
+			path,
+			JSON.stringify({ checkedAt: Date.now() + 60 * 60 * 1000, models: [catalogModel("gpt-6-astra")] }),
+		);
+		assert.strictEqual(
+			readCachedCodexCatalog(path, bundled),
+			undefined,
+			"a forged future timestamp does not pin the cache",
+		);
 	});
 
 	it("shares one in-flight request across concurrent refreshes", async () => {
@@ -226,5 +264,67 @@ describe("refreshCodexRemoteCatalog", () => {
 		};
 		const models = await refreshCodexRemoteCatalog(path, bundled, { fetchFn, offline: true });
 		assert.ok(models?.some((model) => model.id === "gpt-6-astra"));
+	});
+});
+
+describe("ModelRegistry integration: catalog overlay vs user configuration", () => {
+	const tempDirs: string[] = [];
+	function registryDir(): { dir: string; modelsJsonPath: string; cachePath: string } {
+		const dir = mkdtempSync(join(tmpdir(), "codex-registry-test-"));
+		tempDirs.push(dir);
+		return {
+			dir,
+			modelsJsonPath: join(dir, "models.json"),
+			cachePath: join(dir, "openai-codex-catalog-cache.json"),
+		};
+	}
+	afterEach(() => {
+		while (tempDirs.length > 0) rmSync(tempDirs.pop()!, { recursive: true, force: true });
+	});
+
+	it("applies user model overrides on top of the catalog overlay", () => {
+		const { dir, modelsJsonPath, cachePath } = registryDir();
+		// A fresh catalog with gpt-6-astra and a cheaper gpt-5.1.
+		writeFileSync(
+			cachePath,
+			JSON.stringify({
+				checkedAt: Date.now(),
+				models: [
+					catalogModel("gpt-6-astra"),
+					catalogModel("gpt-5.1", { cost: { input: 99, output: 99, cacheRead: 0, cacheWrite: 0 } }),
+				],
+			}),
+		);
+		// The user pins their own cost for gpt-5.1 in models.json.
+		writeFileSync(
+			modelsJsonPath,
+			JSON.stringify({
+				providers: {
+					"openai-codex": {
+						baseUrl: "https://chatgpt.com/backend-api",
+						models: [
+							{
+								id: "gpt-5.1",
+								name: "GPT-5.1",
+								api: "openai-codex-responses",
+								reasoning: true,
+								input: ["text"],
+								cost: { input: 7, output: 7, cacheRead: 0, cacheWrite: 0 },
+								contextWindow: 100000,
+								maxTokens: 8000,
+							},
+						],
+					},
+				},
+			}),
+		);
+		const registry = ModelRegistry.create(AuthStorage.create(join(dir, "auth.json")), modelsJsonPath);
+		const codex = registry.getAll().filter((model) => model.provider === "openai-codex");
+		const astra = codex.find((model) => model.id === "gpt-6-astra");
+		assert.ok(astra, "the catalog-only model is available");
+		const userFive = codex.find((model) => model.id === "gpt-5.1");
+		assert.ok(userFive, "the overlaid bundled model is available");
+		assert.strictEqual(userFive.cost.input, 7, "the user's custom model wins over the catalog entry");
+		assert.strictEqual(userFive.contextWindow, 100000, "the user's custom model keeps its own metadata");
 	});
 });

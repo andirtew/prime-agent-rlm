@@ -24,8 +24,12 @@ type CodexModel = Model<"openai-codex-responses">;
 interface CodexCatalogCache {
 	checkedAt: number;
 	etag?: string;
-	lastModified?: number;
 	models: unknown[];
+}
+
+/** A checkedAt from the future means a corrupted or forged cache: never one to pin. */
+function isPlausibleCheckedAt(checkedAt: number): boolean {
+	return checkedAt <= Date.now() + 5 * 60_000;
 }
 
 /** In-flight refreshes keyed by cache path, so concurrent callers share one request. */
@@ -81,14 +85,16 @@ function parseCodexModel(value: unknown, bundledById: Map<string, CodexModel>): 
 	};
 }
 
-/** Accept the array form pi.dev serves and the `{ models: [...] }` envelope. */
+/** Accept the array form pi.dev serves and the `{ models: [...] }` envelope. Later entries win on duplicate ids. */
 function parseCodexCatalogPayload(value: unknown, bundled: readonly CodexModel[]): CodexModel[] {
 	const entries = Array.isArray(value) ? value : isRecord(value) && Array.isArray(value.models) ? value.models : [];
 	const bundledById = new Map(bundled.map((model) => [model.id, model]));
-	return entries.flatMap((entry) => {
+	const byId = new Map<string, CodexModel>();
+	for (const entry of entries) {
 		const model = parseCodexModel(entry, bundledById);
-		return model ? [model] : [];
-	});
+		if (model) byId.set(model.id, model);
+	}
+	return [...byId.values()];
 }
 
 /**
@@ -127,6 +133,7 @@ export function readCachedCodexCatalog(
 	try {
 		const parsed = JSON.parse(readFileSync(cachePath, "utf8")) as unknown;
 		if (!isRecord(parsed) || !Array.isArray(parsed.models) || typeof parsed.checkedAt !== "number") return undefined;
+		if (!isPlausibleCheckedAt(parsed.checkedAt)) return undefined;
 		const models = parseCodexCatalogPayload(parsed.models, bundled);
 		return { models };
 	} catch {
@@ -144,12 +151,9 @@ function writeCodexCatalogCache(cachePath: string, cache: CodexCatalogCache): vo
 
 async function readCatalogResponse(response: Response): Promise<{
 	etag: string | undefined;
-	lastModified: number | undefined;
 	payload: unknown;
 }> {
 	const etag = response.headers.get("etag") ?? undefined;
-	const lastModifiedHeader = response.headers.get("last-modified");
-	const lastModified = lastModifiedHeader ? Date.parse(lastModifiedHeader) : undefined;
 	const contentLength = Number(response.headers.get("content-length"));
 	if (Number.isFinite(contentLength) && contentLength > CODEX_CATALOG_MAX_BYTES) {
 		throw new Error("Codex model catalog response is too large");
@@ -158,7 +162,6 @@ async function readCatalogResponse(response: Response): Promise<{
 	if (text.length > CODEX_CATALOG_MAX_BYTES) throw new Error("Codex model catalog response is too large");
 	return {
 		etag,
-		lastModified: Number.isNaN(lastModified) ? undefined : lastModified,
 		payload: JSON.parse(text) as unknown,
 	};
 }
@@ -194,16 +197,17 @@ export async function refreshCodexRemoteCatalog(
 			return cachedModels ?? undefined;
 		}
 		if (!response.ok) throw new Error(`Codex model catalog request failed with status ${response.status}`);
-		const { etag, lastModified, payload } = await readCatalogResponse(response);
+		const { etag, payload } = await readCatalogResponse(response);
 		const models = parseCodexCatalogPayload(payload, bundled);
-		if (models.length === 0) return cachedModels ?? undefined;
 		const rawEntries = Array.isArray(payload)
 			? payload
 			: isRecord(payload) && Array.isArray(payload.models)
 				? payload.models
 				: [];
-		writeCodexCatalogCache(cachePath, { checkedAt: Date.now(), etag, lastModified, models: rawEntries });
-		return models;
+		// Persist the fetch time even for an empty catalog (negative caching) so an
+		// empty or degraded remote is not re-requested on every refresh.
+		writeCodexCatalogCache(cachePath, { checkedAt: Date.now(), etag, models: rawEntries });
+		return models.length > 0 ? models : (cachedModels ?? undefined);
 	})();
 	pendingRefreshes.set(cachePath, promise);
 	void promise
@@ -226,7 +230,6 @@ function readCachedCodexCatalogRaw(cachePath: string): CodexCatalogCache | undef
 		return {
 			checkedAt: parsed.checkedAt,
 			etag: typeof parsed.etag === "string" ? parsed.etag : undefined,
-			lastModified: typeof parsed.lastModified === "number" ? parsed.lastModified : undefined,
 			models: parsed.models,
 		};
 	} catch {

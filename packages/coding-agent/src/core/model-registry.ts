@@ -776,6 +776,10 @@ export class ModelRegistry {
 		this.livePrimeInferenceModels ??= cachePath
 			? readCachedPrimeInferenceModels(cachePath, this.bundledPrimeInferenceModels())
 			: undefined;
+		const codexCachePath = this.codexCatalogCachePath();
+		this.liveCodexCatalogModels ??= codexCachePath
+			? readCachedCodexCatalog(codexCachePath, this.bundledCodexModels())?.models
+			: undefined;
 		const privateModels = new Map(
 			[...getPrivatePrimeInferenceModels(), ...this.authorizedPrivatePrimeInferenceModels].map((model) => [
 				model.id,
@@ -795,17 +799,6 @@ export class ModelRegistry {
 			}
 		}
 
-		// The remote pi.dev codex catalog overlays the bundled list (fresh metadata,
-		// new model ids); the disk cache is read synchronously here, and
-		// refreshAvailableModels() refreshes it in the background.
-		const codexCachePath = this.codexCatalogCachePath();
-		this.liveCodexCatalogModels ??= codexCachePath
-			? readCachedCodexCatalog(codexCachePath, this.bundledCodexModels())?.models
-			: undefined;
-		if (this.liveCodexCatalogModels) {
-			combined = mergeCodexCatalogModels(combined, this.liveCodexCatalogModels);
-		}
-
 		this.models = combined;
 	}
 
@@ -816,7 +809,19 @@ export class ModelRegistry {
 		livePrimeInferenceModels?: Model<"openai-completions">[],
 	): Model<Api>[] {
 		const bundledModels = getProviders().flatMap((provider) => getModels(provider as KnownProvider) as Model<Api>[]);
-		return mergePrimeInferenceModels(bundledModels, livePrimeInferenceModels).map((model) => {
+		// The remote codex catalog overlays the bundled list BEFORE overrides are applied
+		// (same ordering as mergePrimeInferenceModels above): provider/model overrides and
+		// models.json custom models then win over the catalog, so user configuration is
+		// never silently replaced by remote metadata. The disk cache is read
+		// synchronously in loadModels(); refreshAvailableModels() refreshes it in the
+		// background.
+		const mergedBundled = this.liveCodexCatalogModels
+			? mergeCodexCatalogModels(
+					mergePrimeInferenceModels(bundledModels, livePrimeInferenceModels),
+					this.liveCodexCatalogModels,
+				)
+			: mergePrimeInferenceModels(bundledModels, livePrimeInferenceModels);
+		return mergedBundled.map((model) => {
 			const providerOverride = overrides.get(model.provider);
 			const perModelOverrides = modelOverrides.get(model.provider);
 			let configuredModel = model;
