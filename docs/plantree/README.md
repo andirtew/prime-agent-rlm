@@ -8,6 +8,7 @@
 | tui-wheel-scroll-ctrl-end | Done（已合并归档） | 闭环完成 | merge `39207b99d` → archive `2f722930d` | 等用户确认是否向 Dmatut7 开 PR |
 | tui-follow-hint-click | Done（已合并归档） | 闭环完成 | merge `9e92921fc` → archive `432b24e2f` | 同上，可并入同一 PR |
 | codex-remote-catalog | Done（已合并归档，自用不提 PR） | 闭环完成 | merge `cd33eca67` → archive `6bd829f97` | 用户实测 gpt-6-astra |
+| ctrlc-clear-draft | Done（已合并归档，自用不提 PR） | 闭环完成 | merge `23b8a51d3` → archive `eabbb6c67` | 用户实测 Ctrl+C 清空 |
 
 ## 阅读顺序
 
