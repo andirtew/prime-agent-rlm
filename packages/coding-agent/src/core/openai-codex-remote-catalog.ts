@@ -227,6 +227,7 @@ function readCachedCodexCatalogRaw(cachePath: string): CodexCatalogCache | undef
 	try {
 		const parsed = JSON.parse(readFileSync(cachePath, "utf8")) as unknown;
 		if (!isRecord(parsed) || !Array.isArray(parsed.models) || typeof parsed.checkedAt !== "number") return undefined;
+		if (!isPlausibleCheckedAt(parsed.checkedAt)) return undefined;
 		return {
 			checkedAt: parsed.checkedAt,
 			etag: typeof parsed.etag === "string" ? parsed.etag : undefined,
