@@ -10368,6 +10368,18 @@ export class InteractiveMode {
 			void this.shutdown();
 			return;
 		}
+		// pi semantics (local customization, 2026-10-25): with a draft in the editor
+		// the press is a pure editor action - stash it for the stash-key restore and
+		// clear, never touching a running turn. Interruption stays on Escape, or on
+		// a second press once the prompt is empty. (The hint check above stays first
+		// even though a draft could coexist with a visible hint: the editor's
+		// onChange clears the hint on any typed text, so a draft plus a live hint is
+		// unreachable through normal typing.)
+		if (this.editor.getText().length > 0) {
+			this.stashDraftBeforeEscapeClear();
+			this.clearInputBar();
+			return;
+		}
 		this.handleInterruptKey();
 	}
 

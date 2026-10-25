@@ -188,24 +188,31 @@ describe("InteractiveMode interrupt shortcuts", () => {
 		expect(mode.shutdown).not.toHaveBeenCalled();
 	});
 
-	it("sends the queue with the interrupt instead of clearing it, and keeps the draft", () => {
-		// Retitled with the #2426 wiring: the interrupt no longer leaves the queue for the next
-		// submit, it carries it out - so what must not happen is a clear, and the draft is still
-		// nobody's business but the user's.
+	it("clears and stashes the draft on Ctrl+C without touching a streaming run or its queue", () => {
+		// pi semantics (local customization, 2026-10-25): a non-empty draft makes the press a
+		// pure editor action. The #2426 carry-the-queue interrupt stays available on Escape,
+		// or on Ctrl+C once the prompt is empty; while a draft is present the running turn,
+		// its queued steering, and the draft itself (stash-key restore) all survive.
 		const mode = createInteractiveFake({ editorText: "draft", streaming: true });
 		mode.connectionState.sessionActions = { queuedCount: 2, steering: ["steer"], followUps: ["follow"] };
 
 		Reflect.get(InteractiveMode.prototype, "handleCtrlC").call(mode);
 
-		expect(mode.agentConnection.abortAndSendQueued).toHaveBeenCalledTimes(1);
+		expect(mode.agentConnection.abortAndSendQueued).not.toHaveBeenCalled();
+		expect(mode.agentConnection.abort).not.toHaveBeenCalled();
 		expect(mode.agentConnection.abortAndClearQueue).not.toHaveBeenCalled();
 		expect(mode.agentConnection.clearQueue).not.toHaveBeenCalled();
-		expect(mode.editor.getText()).toBe("draft");
+		expect(mode.editor.getText()).toBe("");
+		expect(mode.promptStashState.stash?.text).toBe("draft");
 		expect(mode.connectionState.sessionActions).toEqual({
 			queuedCount: 2,
 			steering: ["steer"],
 			followUps: ["follow"],
 		});
+
+		// The stash key restores what the press cleared.
+		Reflect.get(InteractiveMode.prototype, "handlePromptStash").call(mode);
+		expect(mode.editor.getText()).toBe("draft");
 	});
 
 	it("a double Ctrl+C during a run stops it without quitting; an idle double press exits", () => {
@@ -224,10 +231,9 @@ describe("InteractiveMode interrupt shortcuts", () => {
 	});
 
 	it("clears the exit hint after two seconds", async () => {
-		const mode = createInteractiveFake({ editorText: "draft" });
+		const mode = createInteractiveFake({});
 
 		Reflect.get(InteractiveMode.prototype, "handleCtrlC").call(mode);
-		expect(mode.editor.getText()).toBe("draft");
 		expect(Reflect.get(InteractiveMode.prototype, "getTrayOverrideLabel").call(mode)).toBe("再按一次 Ctrl+C 退出");
 
 		await vi.advanceTimersByTimeAsync(2000);
@@ -238,15 +244,41 @@ describe("InteractiveMode interrupt shortcuts", () => {
 		expect(mode.ui.requestRender).toHaveBeenCalled();
 	});
 
-	it("preserves idle draft input on first Ctrl+C", () => {
+	it("clears an idle draft on Ctrl+C, stashing it for the stash key", () => {
 		const mode = createInteractiveFake({ editorText: "draft" });
 
 		Reflect.get(InteractiveMode.prototype, "handleCtrlC").call(mode);
 
-		expect(mode.editor.getText()).toBe("draft");
+		expect(mode.editor.getText()).toBe("");
+		expect(mode.promptStashState.stash?.text).toBe("draft");
+		expect(mode.showToast).toHaveBeenCalledWith("✓ stashed");
 		expect(mode.agentConnection.abortAndSendQueued).not.toHaveBeenCalled();
 		expect(mode.agentConnection.abort).not.toHaveBeenCalled();
 		expect(mode.shutdown).not.toHaveBeenCalled();
+	});
+
+	it("first press clears the draft mid-run, the second press interrupts it", () => {
+		const mode = createInteractiveFake({ editorText: "draft", streaming: true });
+		const handleCtrlC = Reflect.get(InteractiveMode.prototype, "handleCtrlC");
+
+		handleCtrlC.call(mode);
+		expect(mode.editor.getText()).toBe("");
+		expect(mode.agentConnection.abortAndSendQueued).not.toHaveBeenCalled();
+
+		handleCtrlC.call(mode);
+		expect(mode.agentConnection.abortAndSendQueued).toHaveBeenCalledTimes(1);
+		// Stopping work only stops it: the press that interrupts does not arm the exit hint.
+		expect(Reflect.get(InteractiveMode.prototype, "getTrayOverrideLabel").call(mode)).toBeUndefined();
+	});
+
+	it("clears a whitespace-only draft on Ctrl+C without stashing it", () => {
+		const mode = createInteractiveFake({ editorText: "   " });
+
+		Reflect.get(InteractiveMode.prototype, "handleCtrlC").call(mode);
+
+		expect(mode.editor.getText()).toBe("");
+		expect(mode.promptStashState.stash).toBeUndefined();
+		expect(mode.showToast).not.toHaveBeenCalledWith("✓ stashed");
 	});
 
 	it("cancels the tree repeat when typing after interrupting streaming", () => {
