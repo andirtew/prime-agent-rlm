@@ -1,6 +1,7 @@
 # Changelog
 
 ## [Unreleased]
+- OpenAI Codex model list is now dynamic: the registry overlays a remote pi.dev catalog (4h TTL, etag revalidation, disk cache at `openai-codex-catalog-cache.json`, bundled-list fallback on every failure), so new OpenAI models appear without a code change. (Ported from upstream pi 1.2.0's remote-catalog mechanism; local-only, not PR'd.)
 - Added the `fullscreenWheelScrollLines` setting ("auto" or 1-100): "auto" keeps one line per wheel event in local macOS terminals and scales with wheel velocity elsewhere, capped at six lines per event. (Ported from upstream earendil-works/pi f1927c2d5.)
 
 ## [0.11.21] - 2026-10-09
