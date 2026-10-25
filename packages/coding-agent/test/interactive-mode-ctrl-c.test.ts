@@ -257,6 +257,20 @@ describe("InteractiveMode interrupt shortcuts", () => {
 		expect(mode.shutdown).not.toHaveBeenCalled();
 	});
 
+	it("first press clears the draft mid-run, the second press interrupts it", () => {
+		const mode = createInteractiveFake({ editorText: "draft", streaming: true });
+		const handleCtrlC = Reflect.get(InteractiveMode.prototype, "handleCtrlC");
+
+		handleCtrlC.call(mode);
+		expect(mode.editor.getText()).toBe("");
+		expect(mode.agentConnection.abortAndSendQueued).not.toHaveBeenCalled();
+
+		handleCtrlC.call(mode);
+		expect(mode.agentConnection.abortAndSendQueued).toHaveBeenCalledTimes(1);
+		// Stopping work only stops it: the press that interrupts does not arm the exit hint.
+		expect(Reflect.get(InteractiveMode.prototype, "getTrayOverrideLabel").call(mode)).toBeUndefined();
+	});
+
 	it("clears a whitespace-only draft on Ctrl+C without stashing it", () => {
 		const mode = createInteractiveFake({ editorText: "   " });
 
