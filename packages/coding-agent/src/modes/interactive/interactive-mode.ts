@@ -10368,6 +10368,15 @@ export class InteractiveMode {
 			void this.shutdown();
 			return;
 		}
+		// pi semantics (local customization, 2026-10-25): with a draft in the editor
+		// the press is a pure editor action - stash it for the stash-key restore and
+		// clear, never touching a running turn. Interruption stays on Escape, or on
+		// a second press once the prompt is empty.
+		if (this.editor.getText().length > 0) {
+			this.stashDraftBeforeEscapeClear();
+			this.clearInputBar();
+			return;
+		}
 		this.handleInterruptKey();
 	}
 
