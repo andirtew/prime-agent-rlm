@@ -32,6 +32,11 @@ import type { TLocalizedValidationError } from "typebox/error";
 import { getAgentDir } from "../config.js";
 import { getShellConfig, type ShellConfig } from "../utils/shell.js";
 import { type AuthSourceToken, type AuthStatus, type AuthStorage, isStaleAuthTokenExpired } from "./auth-storage.js";
+import {
+	mergeCodexCatalogModels,
+	readCachedCodexCatalog,
+	refreshCodexRemoteCatalog,
+} from "./openai-codex-remote-catalog.js";
 import { PRIME_INFERENCE_PROVIDER_ID } from "./prime-inference-auth.js";
 import {
 	buildPrimeInferenceModels,
@@ -636,6 +641,8 @@ export class ModelRegistry {
 	private authorizedPrivatePrimeInferenceTeamId: string | undefined;
 	private explicitPrivatePrimeInferenceModelIds = new Set<string>();
 	private openAICodexModelsCache: { authFingerprint: string; modelIds: Set<string>; refreshedAt: number } | undefined;
+	private liveCodexCatalogModels: Model<"openai-codex-responses">[] | undefined;
+	private pendingCodexCatalogRefresh: Promise<void> | undefined;
 	private backgroundPrivatePrimeAuthorization: { fingerprint: string; promise: Promise<void> } | undefined;
 	private livePrimeInferenceModels: Model<"openai-completions">[] | undefined;
 	private pendingPrimeInferenceCatalogRefresh: Promise<void> | undefined;
@@ -718,6 +725,14 @@ export class ModelRegistry {
 		return this.modelsJsonPath ? join(dirname(this.modelsJsonPath), "prime-inference-models-cache.json") : undefined;
 	}
 
+	private codexCatalogCachePath(): string | undefined {
+		return this.modelsJsonPath ? join(dirname(this.modelsJsonPath), "openai-codex-catalog-cache.json") : undefined;
+	}
+
+	private bundledCodexModels(): Model<"openai-codex-responses">[] {
+		return getModels("openai-codex" as KnownProvider) as Model<"openai-codex-responses">[];
+	}
+
 	private bundledPrimeInferenceModels(): Model<"openai-completions">[] {
 		return getModels(PRIME_INFERENCE_PROVIDER_ID) as Model<"openai-completions">[];
 	}
@@ -761,6 +776,10 @@ export class ModelRegistry {
 		this.livePrimeInferenceModels ??= cachePath
 			? readCachedPrimeInferenceModels(cachePath, this.bundledPrimeInferenceModels())
 			: undefined;
+		const codexCachePath = this.codexCatalogCachePath();
+		this.liveCodexCatalogModels ??= codexCachePath
+			? readCachedCodexCatalog(codexCachePath, this.bundledCodexModels())?.models
+			: undefined;
 		const privateModels = new Map(
 			[...getPrivatePrimeInferenceModels(), ...this.authorizedPrivatePrimeInferenceModels].map((model) => [
 				model.id,
@@ -790,7 +809,19 @@ export class ModelRegistry {
 		livePrimeInferenceModels?: Model<"openai-completions">[],
 	): Model<Api>[] {
 		const bundledModels = getProviders().flatMap((provider) => getModels(provider as KnownProvider) as Model<Api>[]);
-		return mergePrimeInferenceModels(bundledModels, livePrimeInferenceModels).map((model) => {
+		// The remote codex catalog overlays the bundled list BEFORE overrides are applied
+		// (same ordering as mergePrimeInferenceModels above): provider/model overrides and
+		// models.json custom models then win over the catalog, so user configuration is
+		// never silently replaced by remote metadata. The disk cache is read
+		// synchronously in loadModels(); refreshAvailableModels() refreshes it in the
+		// background.
+		const mergedBundled = this.liveCodexCatalogModels
+			? mergeCodexCatalogModels(
+					mergePrimeInferenceModels(bundledModels, livePrimeInferenceModels),
+					this.liveCodexCatalogModels,
+				)
+			: mergePrimeInferenceModels(bundledModels, livePrimeInferenceModels);
+		return mergedBundled.map((model) => {
 			const providerOverride = overrides.get(model.provider);
 			const perModelOverrides = modelOverrides.get(model.provider);
 			let configuredModel = model;
@@ -1055,6 +1086,22 @@ export class ModelRegistry {
 					// Settlement, not failure, is what the waiter observes.
 					.catch(() => undefined);
 			}
+			const codexCachePath = this.codexCatalogCachePath();
+			if (codexCachePath) {
+				// Same discipline as the Prime Inference catalog: the background codex
+				// catalog refresh settles later, and waitForPendingModelRefreshes()
+				// awaits it so model decisions observe the post-refresh catalog.
+				this.pendingCodexCatalogRefresh = refreshCodexRemoteCatalog(codexCachePath, this.bundledCodexModels(), {
+					offline: isOfflineModeEnabled(),
+				})
+					.then((models) => {
+						if (!models) return;
+						this.liveCodexCatalogModels = models;
+						this.reloadModelsAfterCatalogChange();
+					})
+					// Settlement, not failure, is what the waiter observes.
+					.catch(() => undefined);
+			}
 			await this.refreshPrivatePrimeInferenceAuthorization(
 				previousPrivateModelIds,
 				previousTeamId,
@@ -1077,6 +1124,7 @@ export class ModelRegistry {
 	async waitForPendingModelRefreshes(timeoutMs: number): Promise<void> {
 		const pending: Promise<unknown>[] = [];
 		if (this.pendingPrimeInferenceCatalogRefresh) pending.push(this.pendingPrimeInferenceCatalogRefresh);
+		if (this.pendingCodexCatalogRefresh) pending.push(this.pendingCodexCatalogRefresh);
 		if (this.backgroundPrivatePrimeAuthorization?.promise) {
 			pending.push(this.backgroundPrivatePrimeAuthorization.promise);
 		}
