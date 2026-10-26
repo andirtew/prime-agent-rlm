@@ -6,11 +6,11 @@
 
 ## In Progress
 
-（无）
+- [ ] `codex-catalog-dict-form`：修复 pi.dev 字典格式 payload 解析为空（负缓存 4h）的问题，计划见 [topics/dict-payload-fix.md](topics/dict-payload-fix.md)
 
 ## Next
 
-- [ ] 用户重启 prime 实测：/model 列表出现 GPT-6 Astra 等目录模型
+- [ ] 用户重启 prime 实测：/model 列表出现 GPT-6 Astra 等目录模型（依赖 dict-form 修复合并）
 
 ## Deferred
 
