@@ -40,3 +40,11 @@
 - 结论：**PASS**，无阻塞问题
 - 低危观察（不阻塞）：既有空缓存（models:[]）在 4h TTL 内仍被信任，修复对该状态最长延迟 4 小时生效后自愈——属原负缓存机制的自然行为
 - SOURCE_TIP：`0dd4f1e617b499aa5014ee21957371d74be08b0a`
+
+## 落地
+
+- MERGE_COMMIT：`101606e9b219be04d654560cdd10b27dab9726a3`（tree 等价 ✓，远端核对一致）
+- 归档：`archive/codex-catalog-dict-form` → `70a1b45b877cb7c4d97ece2a5c8d1b4c0c4d4b97`，四方核对 OK
+- 清理：本地/远端 active 分支已删（远端删除走 pre-push guard 文档的 `PRIME_AGENT_ALLOW_MIRROR_PUSH=1` 授权通道），worktree 已移除
+- 交付：按用户要求**未安装**到现役 `~/prime-agent-rlm`；用户后续自行更新+构建后，重启 prime 应在 /model 看到 gpt-6-astra 等目录模型
+- 待用户实测：`/model` 出现目录模型；既有空缓存最长 4h 负缓存延迟后自愈（也可删 `~/.prime/agent/openai-codex-catalog-cache.json` 立即重拉）
