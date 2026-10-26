@@ -153,6 +153,49 @@ describe("refreshCodexRemoteCatalog", () => {
 		assert.strictEqual(written.models.length, 1);
 	});
 
+	it("accepts the id-keyed object form pi.dev serves, persisting entries to the cache", async () => {
+		const dir = cacheDir();
+		const path = join(dir, "cache.json");
+		const fetchFn = async () =>
+			fakeResponse({
+				"gpt-6-luna": catalogModel("gpt-6-luna"),
+				"gpt-6-astra": catalogModel("gpt-6-astra", {
+					cost: { input: 10, output: 50, cacheRead: 1, cacheWrite: 12.5 },
+				}),
+			});
+		const models = await refreshCodexRemoteCatalog(path, bundled, { fetchFn });
+		assert.ok(
+			models?.some((model) => model.id === "gpt-6-astra"),
+			"dict payload entries are parsed",
+		);
+		assert.strictEqual(models?.find((model) => model.id === "gpt-6-astra")?.cost.input, 10);
+		const written = JSON.parse(readFileSync(path, "utf8")) as { models: unknown[] };
+		assert.strictEqual(written.models.length, 2, "dict entries are persisted as an array");
+		assert.ok(
+			written.models.every((entry) => typeof (entry as { id?: string }).id === "string"),
+			"persisted entries keep their id fields",
+		);
+		// The persisted array must round-trip as the same catalog on a fresh read.
+		const reread = await refreshCodexRemoteCatalog(path, bundled, { offline: true });
+		assert.ok(
+			reread?.some((model) => model.id === "gpt-6-astra"),
+			"cached dict-derived entries reload",
+		);
+	});
+
+	it("skips invalid values in id-keyed object payloads", async () => {
+		const dir = cacheDir();
+		const path = join(dir, "cache.json");
+		const fetchFn = async () =>
+			fakeResponse({
+				"gpt-6-astra": catalogModel("gpt-6-astra"),
+				garbage: "not-a-model",
+			});
+		const models = await refreshCodexRemoteCatalog(path, bundled, { fetchFn });
+		assert.strictEqual(models?.length, 1);
+		assert.strictEqual(models?.[0]?.id, "gpt-6-astra");
+	});
+
 	it("keeps the cached models on a 304 revalidation", async () => {
 		const dir = cacheDir();
 		const path = join(dir, "cache.json");
