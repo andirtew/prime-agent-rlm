@@ -85,9 +85,22 @@ function parseCodexModel(value: unknown, bundledById: Map<string, CodexModel>): 
 	};
 }
 
-/** Accept the array form pi.dev serves and the `{ models: [...] }` envelope. Later entries win on duplicate ids. */
+/**
+ * Accept the id-keyed object form pi.dev serves, plus the array form and the
+ * `{ models: [...] }` envelope. A record carrying a models array is the
+ * envelope; any other record is treated as an id-keyed catalog map.
+ */
+function catalogEntries(value: unknown): unknown[] {
+	if (Array.isArray(value)) return value;
+	if (isRecord(value)) {
+		return Array.isArray(value.models) ? value.models : Object.values(value);
+	}
+	return [];
+}
+
+/** Accept every catalog payload form via catalogEntries. Later entries win on duplicate ids. */
 function parseCodexCatalogPayload(value: unknown, bundled: readonly CodexModel[]): CodexModel[] {
-	const entries = Array.isArray(value) ? value : isRecord(value) && Array.isArray(value.models) ? value.models : [];
+	const entries = catalogEntries(value);
 	const bundledById = new Map(bundled.map((model) => [model.id, model]));
 	const byId = new Map<string, CodexModel>();
 	for (const entry of entries) {
@@ -199,11 +212,7 @@ export async function refreshCodexRemoteCatalog(
 		if (!response.ok) throw new Error(`Codex model catalog request failed with status ${response.status}`);
 		const { etag, payload } = await readCatalogResponse(response);
 		const models = parseCodexCatalogPayload(payload, bundled);
-		const rawEntries = Array.isArray(payload)
-			? payload
-			: isRecord(payload) && Array.isArray(payload.models)
-				? payload.models
-				: [];
+		const rawEntries = catalogEntries(payload);
 		// Persist the fetch time even for an empty catalog (negative caching) so an
 		// empty or degraded remote is not re-requested on every refresh.
 		writeCodexCatalogCache(cachePath, { checkedAt: Date.now(), etag, models: rawEntries });
