@@ -31,3 +31,12 @@
 
 - 实现自审：PASS（见上）
 - 独立复核（阶段 4）：见下
+
+## 独立复核（阶段 4）
+
+- 复核人：百炼/kimi-k3（prime CLI 非交互，独立会话，cwd=worktree）
+- 复核人自行动作：逐行审查、独立重跑 91/91、写探针实测缓存往返（带 off:null 的 map 落盘重读完整）、核实请求层消费（openai-codex-responses.ts 用 thinkingLevelMap?.[effort] ?? effort 翻译档位）、核实用户 override 路径无共享引用突变
+- 结论：**PASS**，无阻塞问题
+- 低危 1（已采纳）：缺 changelog——按自用分支惯例直写 [Unreleased]（走了计划 Scope 增补流程：main 更新计划 → active 同步合并 → 补条目，91/91 复跑）
+- 低危 2（记录不采纳改动）：未知键透传——消费方只读已知档位键，确无影响，注释已声明语义
+- SOURCE_TIP：`c82b4b82dbbb25de465c2d1135d5121623ca414e`（2+1 commit：feat + merge/changelog）
