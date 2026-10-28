@@ -7,7 +7,7 @@
 
 ## In Progress
 
-（无）
+- [ ] `codex-catalog-thinking-map`：目录合成模型丢失 thinkingLevelMap，xhigh/max 被判不支持。计划见 [topics/thinking-level-map-fix.md](topics/thinking-level-map-fix.md)
 
 ## Next
 
