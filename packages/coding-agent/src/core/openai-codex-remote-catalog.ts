@@ -1,5 +1,5 @@
 import { existsSync, readFileSync } from "node:fs";
-import type { Api, Model } from "@earendil-works/pi-ai";
+import type { Api, Model, ModelThinkingLevel, ThinkingLevelMap } from "@earendil-works/pi-ai";
 import { writeFileAtomicSync } from "../utils/atomic-file.js";
 
 /**
@@ -66,6 +66,7 @@ function parseInput(value: unknown, fallback: readonly ("text" | "image")[]): ("
 function parseCodexModel(value: unknown, bundledById: Map<string, CodexModel>): CodexModel | undefined {
 	if (!isRecord(value) || typeof value.id !== "string" || value.id.length === 0) return undefined;
 	const bundled = bundledById.get(value.id);
+	const thinkingLevelMap = parseThinkingLevelMap(value.thinkingLevelMap) ?? bundled?.thinkingLevelMap;
 	return {
 		id: value.id,
 		name: typeof value.name === "string" ? value.name : (bundled?.name ?? value.id),
@@ -81,8 +82,27 @@ function parseCodexModel(value: unknown, bundledById: Map<string, CodexModel>): 
 				: (bundled?.contextWindow ?? CODEX_DEFAULT_CONTEXT_WINDOW),
 		maxTokens:
 			typeof value.maxTokens === "number" ? value.maxTokens : (bundled?.maxTokens ?? CODEX_DEFAULT_MAX_TOKENS),
+		...(thinkingLevelMap ? { thinkingLevelMap } : {}),
 		...(bundled?.compat ? { compat: bundled.compat } : {}),
 	};
+}
+
+/**
+ * Catalog thinking-level table: values map a pi level to the provider's value,
+ * null marks it unsupported. Keys or values of any other shape are dropped;
+ * an entry with no usable pair is undefined so the bundled table (if any)
+ * applies. Replacement is whole-table: pi.dev serves the complete map, and a
+ * per-key merge would leave stale keys behind when the remote drops a level.
+ */
+function parseThinkingLevelMap(value: unknown): ThinkingLevelMap | undefined {
+	if (!isRecord(value)) return undefined;
+	const map: ThinkingLevelMap = {};
+	for (const [level, target] of Object.entries(value)) {
+		if (target === null || typeof target === "string") {
+			map[level as ModelThinkingLevel] = target;
+		}
+	}
+	return Object.keys(map).length > 0 ? map : undefined;
 }
 
 /**

@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Api, Model } from "@earendil-works/pi-ai";
+import { getSupportedThinkingLevels } from "@earendil-works/pi-ai";
 import { afterEach, describe, it } from "vitest";
 import { AuthStorage } from "../src/core/auth-storage.js";
 import { ModelRegistry } from "../src/core/model-registry.js";
@@ -194,6 +195,67 @@ describe("refreshCodexRemoteCatalog", () => {
 		const models = await refreshCodexRemoteCatalog(path, bundled, { fetchFn });
 		assert.strictEqual(models?.length, 1);
 		assert.strictEqual(models?.[0]?.id, "gpt-6-astra");
+	});
+
+	it("applies the catalog thinking-level map, unlocking xhigh and max", async () => {
+		const dir = cacheDir();
+		const path = join(dir, "cache.json");
+		const fetchFn = async () =>
+			fakeResponse({
+				"gpt-6-astra": catalogModel("gpt-6-astra", {
+					reasoning: true,
+					thinkingLevelMap: {
+						off: null,
+						minimal: "low",
+						high: "high",
+						xhigh: "xhigh",
+						max: "max",
+					},
+				}),
+			});
+		const models = await refreshCodexRemoteCatalog(path, bundled, { fetchFn });
+		const astra = models?.find((model) => model.id === "gpt-6-astra");
+		assert.ok(astra, "model parsed");
+		const levels = getSupportedThinkingLevels(astra);
+		assert.ok(levels.includes("max"), "max is available");
+		assert.ok(levels.includes("xhigh"), "xhigh is available");
+		assert.ok(!levels.includes("off"), "off:null marks the level unsupported");
+		assert.ok(levels.includes("minimal"), "mapped minimal survives");
+		assert.ok(levels.includes("medium"), "a regular level the map omits stays available (provider default)");
+	});
+
+	it("falls back to the bundled thinking-level map when the entry omits it", async () => {
+		const dir = cacheDir();
+		const path = join(dir, "cache.json");
+		const bundledWithMap: CodexModel[] = [
+			{
+				...bundled[0]!,
+				reasoning: true,
+				thinkingLevelMap: { off: null, xhigh: "xhigh", max: "max" },
+			},
+		];
+		const fetchFn = async () => fakeResponse([catalogModel("gpt-5.1", { reasoning: true })]);
+		const models = await refreshCodexRemoteCatalog(path, bundledWithMap, { fetchFn });
+		const entry = models?.find((model) => model.id === "gpt-5.1");
+		assert.ok(entry, "model parsed");
+		const levels = getSupportedThinkingLevels(entry);
+		assert.ok(levels.includes("max"), "bundled map supplies max");
+		assert.ok(levels.includes("xhigh"), "bundled map supplies xhigh");
+	});
+
+	it("drops invalid thinking-level map values", async () => {
+		const dir = cacheDir();
+		const path = join(dir, "cache.json");
+		const fetchFn = async () =>
+			fakeResponse([
+				catalogModel("gpt-6-astra", { reasoning: true, thinkingLevelMap: { max: "max", bogus: 7, off: null } }),
+			]);
+		const models = await refreshCodexRemoteCatalog(path, bundled, { fetchFn });
+		const entry = models?.find((model) => model.id === "gpt-6-astra");
+		assert.ok(entry, "model parsed");
+		const levels = getSupportedThinkingLevels(entry);
+		assert.ok(levels.includes("max"), "valid pairs survive");
+		assert.ok(!levels.includes("off"), "null keeps its unsupported meaning");
 	});
 
 	it("keeps the cached models on a 304 revalidation", async () => {
