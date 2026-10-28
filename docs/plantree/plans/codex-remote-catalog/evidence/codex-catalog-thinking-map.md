@@ -40,3 +40,10 @@
 - 低危 1（已采纳）：缺 changelog——按自用分支惯例直写 [Unreleased]（走了计划 Scope 增补流程：main 更新计划 → active 同步合并 → 补条目，91/91 复跑）
 - 低危 2（记录不采纳改动）：未知键透传——消费方只读已知档位键，确无影响，注释已声明语义
 - SOURCE_TIP：`c82b4b82dbbb25de465c2d1135d5121623ca414e`（2+1 commit：feat + merge/changelog）
+
+## 落地
+
+- MERGE_COMMIT：`8e01fa54ff0485536912485ff8d6a46cb5bca502`（tree 等价 ✓，远端核对一致）
+- 归档：`archive/codex-catalog-thinking-map` → `bd28a18624b9dd5c4977af10665a061c3f0193bd`，四方核对 OK
+- 清理：本地/远端 active 已删（远端走 guard 授权通道；首次 SSL 抖动重试成功），worktree 已移除
+- 交付：按用户要求**未安装**现役 `~/prime-agent-rlm`，等待批准；批准后更新+构建+重启 prime，`/model` 选 gpt-6-astra 后 `/effort max` 应可选（既有目录缓存含完整条目，无需删缓存）
