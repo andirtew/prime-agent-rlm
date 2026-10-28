@@ -30,6 +30,7 @@ worktree：`/Users/xu/自建项目/primeagent-worktrees/codex-catalog-thinking-m
 
 - `packages/coding-agent/src/core/openai-codex-remote-catalog.ts`
 - `packages/coding-agent/test/openai-codex-remote-catalog.test.ts`
+- `packages/coding-agent/CHANGELOG.md`（[Unreleased] 一行，独立复核建议：用户可感知变更按自用分支惯例直写）
 
 ## Non-goals
 
