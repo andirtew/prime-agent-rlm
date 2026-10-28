@@ -2,6 +2,7 @@
 
 ## [Unreleased]
 - OpenAI Codex model list is now dynamic: the registry overlays a remote pi.dev catalog (4h TTL, etag revalidation, disk cache at `openai-codex-catalog-cache.json`, bundled-list fallback on every failure), so new OpenAI models appear without a code change. (Ported from upstream pi 1.2.0's remote-catalog mechanism; local-only, not PR'd.)
+- Catalog codex models now carry their `thinkingLevelMap`: `/effort xhigh`/`max` work on remote-catalog models (e.g. gpt-6-astra) instead of being clamped back to `high`. The catalog entry's map wins, falling back to the bundled model's map; entries are cached verbatim so the table round-trips. (Also fixes catalog parsing for pi.dev's id-keyed dict payload form, which previously yielded an empty catalog.)
 - Added the `fullscreenWheelScrollLines` setting ("auto" or 1-100): "auto" keeps one line per wheel event in local macOS terminals and scales with wheel velocity elsewhere, capped at six lines per event. (Ported from upstream earendil-works/pi f1927c2d5.)
 
 ## [0.11.21] - 2026-10-09
