@@ -138,6 +138,7 @@ export type DaemonWorkerCommand =
 	| { id?: string; type: "worker_unsubscribe"; activeSessionId: string }
 	| { id?: string; type: "worker_register_peer_transport"; grant: DaemonWorkerPeerGrant }
 	| { id?: string; type: "worker_archive_and_shutdown" }
+	| { id?: string; type: "worker_discard_empty_drafts" }
 	| {
 			id?: string;
 			type: "worker_passivate_idle_children";

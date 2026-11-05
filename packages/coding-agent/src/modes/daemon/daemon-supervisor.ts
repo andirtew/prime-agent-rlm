@@ -2664,14 +2664,27 @@ export class DaemonSupervisor {
 		if (!this.isEmptyDetachEvictionCandidate(worker)) return;
 		try {
 			// Idle-sweep coordination: fence new mutations, drain admitted ones, re-read before deciding.
-			await this.withEvictionFence("Timed out draining daemon mutations for empty-session eviction", () =>
-				this.passivateWorkerIfStillEligible(
+			await this.withEvictionFence("Timed out draining daemon mutations for empty-session eviction", async () => {
+				// The graceful worker stop below closes sessions with reason "shutdown",
+				// which keeps their files. For an all-empty worker those files are exactly
+				// the abandoned drafts the resume list should not retain: ask the worker to
+				// discard them first (it re-validates clients/content/jobs locally), then
+				// stop it as before. A failure here only falls back to the old behavior.
+				const stoppingClient = worker.client;
+				if (stoppingClient && this.isEmptyDetachEvictionCandidate(worker)) {
+					await stoppingClient
+						.requestWorker({ type: "worker_discard_empty_drafts" }, 5000)
+						.catch((error) =>
+							this.log(`Empty-draft discard failed for worker ${worker.descriptor.workerId}: ${String(error)}`),
+						);
+				}
+				await this.passivateWorkerIfStillEligible(
 					worker,
 					() => this.isEmptyDetachEvictionCandidate(worker),
 					() =>
 						`Evicted empty session worker ${worker.descriptor.workerId} root=${worker.descriptor.rootSessionId ?? worker.descriptor.rootActiveSessionId} on last client detach`,
-				),
-			);
+				);
+			});
 		} catch (error) {
 			this.log(`Empty-session eviction failed for worker ${worker.descriptor.workerId}: ${String(error)}`);
 		}
