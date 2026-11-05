@@ -4965,6 +4965,11 @@ export class AgentDaemon {
 					this.write(client, success(command.id, "detach"));
 					return;
 				}
+				case "worker_discard_empty_drafts": {
+					const discarded = await this.discardEmptyDrafts();
+					this.writeWorkerSuccess(client, command, { discarded });
+					return;
+				}
 				case "worker_archive_and_shutdown": {
 					// Close sessions first so direct peers read session_closed "killed", not a daemon shutdown.
 					for (const state of [...this.sessions.values()]) {
@@ -8126,6 +8131,47 @@ export class AgentDaemon {
 			return false;
 		}
 		return !this.hasScheduledJobsForSession(state.activeSessionId);
+	}
+
+	/**
+	 * The supervisor evicts an all-empty-draft worker on last client detach but
+	 * its graceful stop closes sessions with reason "shutdown", which keeps
+	 * resume entries — the on-disk empty session files lingered as "(no
+	 * messages)" rows. This discard pass re-validates every session locally
+	 * (real clients, live work, message/user-content/jobs) so a stale
+	 * supervisor view can never delete something a client reattached to or
+	 * content arrived into between the fence and this command.
+	 *
+	 * The supervisor's relay subscription authenticates as "supervisor" and
+	 * rides its own connection: it is not a real client. A session with only
+	 * relay subscriptions attached has no user, which is the exact state the
+	 * supervisor's eviction already verified.
+	 */
+	async discardEmptyDrafts(): Promise<string[]> {
+		const discarded: string[] = [];
+		for (const state of [...this.sessions.values()]) {
+			if (state.runtime.metadata.kind === "subagent") continue;
+			// A named session signals intent to return even with zero messages
+			// (isEvictableEmptySessionSummary exempts it on the supervisor side;
+			// this mirrors the guard in case the roster view lags a fresh rename).
+			if (state.runtime.session.sessionName) continue;
+			// An attach in flight counts as a real client even before it lands in
+			// state.clients (mirrors the supervisor's attached-clients view).
+			if (state.pendingAttaches > 0) continue;
+			const realClients = [...state.clients].filter((client) => client.authenticationRole !== "supervisor").length;
+			if (realClients > 0) continue;
+			if (state.runtime.session.isBashRunning || hasLiveSessionWork(state)) continue;
+			if (!this.isEmptyDraftContent(state)) continue;
+			try {
+				await this.closeSession(state, "killed");
+				discarded.push(state.runtime.session.sessionId);
+			} catch (error) {
+				this.log(
+					`Empty-draft discard failed for session ${state.activeSessionId}: ${String(error)}; leaving it in place`,
+				);
+			}
+		}
+		return discarded;
 	}
 
 	private createUpdateRestartSession(state: ActiveSessionState): DaemonUpdateRestartSession | undefined {

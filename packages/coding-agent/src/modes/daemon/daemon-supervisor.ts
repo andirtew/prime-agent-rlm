@@ -2664,14 +2664,42 @@ export class DaemonSupervisor {
 		if (!this.isEmptyDetachEvictionCandidate(worker)) return;
 		try {
 			// Idle-sweep coordination: fence new mutations, drain admitted ones, re-read before deciding.
-			await this.withEvictionFence("Timed out draining daemon mutations for empty-session eviction", () =>
-				this.passivateWorkerIfStillEligible(
+			await this.withEvictionFence("Timed out draining daemon mutations for empty-session eviction", async () => {
+				// The graceful worker stop below closes sessions with reason "shutdown",
+				// which keeps their files. For an all-empty worker those files are exactly
+				// the abandoned drafts the resume list should not retain: ask the worker to
+				// discard them first (it re-validates clients/content/jobs locally), then
+				// stop it as before. A failure here only falls back to the old behavior.
+				// An unknown-command failure (older worker) resolves without throwing, so
+				// read the response explicitly instead of relying on the catch alone.
+				const stoppingClient = worker.client;
+				if (stoppingClient && this.isEmptyDetachEvictionCandidate(worker)) {
+					await stoppingClient
+						.requestWorker({ type: "worker_discard_empty_drafts" }, 5000)
+						.then((response) => {
+							if (!response.success) {
+								this.log(
+									`Empty-draft discard refused for worker ${worker.descriptor.workerId}: ${response.error ?? "unknown error"}`,
+								);
+							}
+						})
+						.catch((error) =>
+							this.log(`Empty-draft discard failed for worker ${worker.descriptor.workerId}: ${String(error)}`),
+						);
+				}
+				// After a successful discard the worker's roster is empty, which no longer
+				// matches isEmptyDetachEvictionCandidate's "summaries.length > 0" contract —
+				// an emptied worker must still be stopped here, or it leaks as a resident
+				// process no sweep reclaims. Zero sessions can only mean the discard just
+				// removed them (the entry check above guaranteed at least one); a client
+				// reattaching in the window keeps a session row and fails both checks.
+				await this.passivateWorkerIfStillEligible(
 					worker,
-					() => this.isEmptyDetachEvictionCandidate(worker),
+					() => this.isEmptyDetachEvictionCandidate(worker) || this.workerRosterEntries(worker).length === 0,
 					() =>
 						`Evicted empty session worker ${worker.descriptor.workerId} root=${worker.descriptor.rootSessionId ?? worker.descriptor.rootActiveSessionId} on last client detach`,
-				),
-			);
+				);
+			});
 		} catch (error) {
 			this.log(`Empty-session eviction failed for worker ${worker.descriptor.workerId}: ${String(error)}`);
 		}
