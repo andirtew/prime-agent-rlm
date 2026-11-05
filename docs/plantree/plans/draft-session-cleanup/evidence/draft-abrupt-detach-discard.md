@@ -65,3 +65,12 @@
 
 - 3 次连续强断开：会话文件只余 1（未 attach 变体，已知边界）✓；worktree 进程仅 supervisor + 1 个 warm spare——**无 worker 泄漏** ✓
 - 回归 87/87（新 10 + daemon-session-list + daemon-agent-roster）；tsgo/biome 绿
+
+## 落地
+
+- MERGE_COMMIT：`b8b81669ffb8aa69e50d9e03f86d2bb2b1512a3f`（tree 等价 ✓，远端一致）
+- 归档：`archive/draft-abrupt-detach-discard` → `ef0b799328d8105521279be6dfc65dcb07c13814`，四方核对 OK
+- 复审（独立子代理）：PASS——阻塞修复正确，两谓词子句互为兜底、对 roster 帧时序不敏感、误停场景逐一排除
+- 清理：本地/远端 active 已删（guard 授权通道），worktree 与实验环境（/tmp/draft-*）已清
+- 交付：按用户要求**未安装**现役；批准后更新 ~/prime-agent-rlm → bad 之后构建重启即生效
+- 待用户实测：日常关 iTerm 标签页后，agents view 历史 区不再新增"（无消息）"行
