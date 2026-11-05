@@ -8155,12 +8155,21 @@ export class AgentDaemon {
 			// (isEvictableEmptySessionSummary exempts it on the supervisor side;
 			// this mirrors the guard in case the roster view lags a fresh rename).
 			if (state.runtime.session.sessionName) continue;
+			// An attach in flight counts as a real client even before it lands in
+			// state.clients (mirrors the supervisor's attached-clients view).
+			if (state.pendingAttaches > 0) continue;
 			const realClients = [...state.clients].filter((client) => client.authenticationRole !== "supervisor").length;
 			if (realClients > 0) continue;
 			if (state.runtime.session.isBashRunning || hasLiveSessionWork(state)) continue;
 			if (!this.isEmptyDraftContent(state)) continue;
-			await this.closeSession(state, "killed");
-			discarded.push(state.runtime.session.sessionId);
+			try {
+				await this.closeSession(state, "killed");
+				discarded.push(state.runtime.session.sessionId);
+			} catch (error) {
+				this.log(
+					`Empty-draft discard failed for session ${state.activeSessionId}: ${String(error)}; leaving it in place`,
+				);
+			}
 		}
 		return discarded;
 	}

@@ -44,3 +44,24 @@
 
 - 场景 D（create-未-attach）不修：无客户端会话无 detach 事件可触发；真实客户端 create→attach 是毫秒窗口。
 - 存量孤儿文件不在本任务范围（用户需要时另行脚本清理）。
+
+## 独立复核（阶段 4）
+
+- 复核人：独立子代理（全新会话，逐行 diff 审查 + 自行重跑 8/8、85/85、tsgo）
+- 首轮结论：**FAIL**（1 阻塞 + 4 低危观察）
+  - **阻塞**：丢弃成功后 roster 清空 → `isEmptyDetachEvictionCandidate` 的 `summaries.length > 0` 不再满足 → `stopWorker` 不执行 → **worker 进程无界泄漏**（用进程泄漏换文件清理），且无任何兜底回收路径
+  - 低危：pendingAttaches/水合中会话守卫缺口（可达性极低）；循环无逐会话错误隔离；requestWorker 对 unknown-command 返回 failure 而非 reject（`.catch` 捕不到）；discarded 响应无人消费
+- 复核同时确认通过项：协议兼容（老 worker fail-fast 回落）、五重守卫逻辑正确、数据安全双层防护（fence+drain+本地复评）、closeSession 调用形状与既有路径一致
+
+## 修复轮（复核发现驱动）
+
+1. **阻塞修复**：`passivateWorkerIfStillEligible` 的资格谓词放宽为 `isEmptyDetachEvictionCandidate(worker) || workerRosterEntries(worker).length === 0`——被丢弃掏空的 worker 仍会被停止（围栏入口已保证原有 ≥1 会话；重连窗口内客户端会留下会话行，两个判定都为 false，不误停）
+2. pendingAttaches 守卫：attach 在途计为真实客户端（对齐 supervisor 3754 行语义）
+3. 逐会话 try/catch 错误隔离：单个 closeSession 失败记日志继续处理其余
+4. supervisor 消费响应：`response.success` 为 false 时记日志（覆盖老 worker unknown-command 的静默回落）
+5. 测试 +2（pendingAttaches 保留、错误隔离），10/10
+
+## 修复轮验证（最终构建实测）
+
+- 3 次连续强断开：会话文件只余 1（未 attach 变体，已知边界）✓；worktree 进程仅 supervisor + 1 个 warm spare——**无 worker 泄漏** ✓
+- 回归 87/87（新 10 + daemon-session-list + daemon-agent-roster）；tsgo/biome 绿

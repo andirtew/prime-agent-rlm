@@ -22,11 +22,17 @@ function makeDaemon(sessions: ActiveSessionState[]): {
 } {
 	const closeSession = vi.fn().mockResolvedValue(undefined);
 	const isEmptyDraftContent = vi.fn().mockReturnValue(true);
+	const log = vi.fn();
 	const daemon = Object.assign(Object.create(AgentDaemon.prototype) as object, {
 		sessions: new Map(sessions.map((state) => [state.activeSessionId, state])),
 		closeSession,
 		isEmptyDraftContent,
-	}) as AgentDaemon & { closeSession: typeof closeSession; isEmptyDraftContent: typeof isEmptyDraftContent };
+		log,
+	}) as AgentDaemon & {
+		closeSession: typeof closeSession;
+		isEmptyDraftContent: typeof isEmptyDraftContent;
+		log: typeof log;
+	};
 	return { daemon, closeSession, isEmptyDraftContent };
 }
 
@@ -102,6 +108,25 @@ describe("AgentDaemon.discardEmptyDrafts", () => {
 		const { daemon: liveDaemon, closeSession: liveClose } = makeDaemon([liveState]);
 		expect(await liveDaemon.discardEmptyDrafts()).toEqual([]);
 		expect(liveClose).not.toHaveBeenCalled();
+	});
+
+	it("keeps a session with an attach in flight (a real client is landing)", async () => {
+		const state = makeState({ id: "attaching", clients: [] });
+		(state as unknown as { pendingAttaches: number }).pendingAttaches = 1;
+		const { daemon, closeSession } = makeDaemon([state]);
+		const discarded = await daemon.discardEmptyDrafts();
+		expect(discarded).toEqual([]);
+		expect(closeSession).not.toHaveBeenCalled();
+	});
+
+	it("keeps processing after one session's close throws (error isolation)", async () => {
+		const bad = makeState({ id: "bad", clients: [] });
+		const good = makeState({ id: "good", clients: [] });
+		const { daemon, closeSession } = makeDaemon([bad, good]);
+		closeSession.mockRejectedValueOnce(new Error("dispose failed"));
+		const discarded = await daemon.discardEmptyDrafts();
+		expect(discarded).toEqual(["session-good"]);
+		expect(closeSession).toHaveBeenCalledTimes(2);
 	});
 
 	it("keeps a named session even when empty and unattached", async () => {
