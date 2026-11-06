@@ -12,7 +12,7 @@
 - 新私有谓词 `isDiscardableDraftContent`：条目白名单反查——存在 `message/custom_message/custom/label/compaction/branch_summary` 任一 → 保留；无定时任务 → 纯配置条目（model_change 等）视为可丢弃。不走 hasUserContent 的前缀跳过。
 - `discardEmptyDrafts` 换用该谓词（其余四重守卫不变）；`closeSession("killed")` 后若文件仍在（严格闸门走了 archive），显式 `deleteSavedSessionFile`。
 - `hasUserContent`/`isEmptyDraftContent`/`closeSession` 本体零改动（共享语义不动）。
-- stash 场景核对：暂存草稿是 custom 条目 → keep-worthy，不会被误删。
+- stash 场景核对（独立复核修正表述）：prompt stash 是客户端 TUI 进程内存态（ClientPromptStashStore），从不写会话文件，与本判定无交集；排队消息内存态且排队即活跃 → hasLiveSessionWork 守卫拦截。
 
 ## 集成实验（最终构建实测，隔离 HOME daemon）
 
@@ -29,3 +29,9 @@
 
 - 实现自审：PASS
 - 独立复核（阶段 4）：见下
+
+## 独立复核（阶段 4）
+
+- 复核人：独立子代理（全新会话，逐行 diff + SessionEntry 全集 15 种逐一核对 + 自行重跑 12/12）
+- 结论：**PASS**，无阻塞缺陷。确认：白名单无用户价值遗漏（session_info 经 sessionName 守卫间接覆盖且谓词单点使用）；删文件复用 trash 优先的安全路径、时序无让出点、幂等；守卫顺序被测试真实检验
+- 三条低优先级建议（全部采纳于收尾提交）：① 删除失败补日志（ok:false 与异常两路）② sessionFile 缺失反向用例 + session_info 行为钉住 ③ evidence 文档 stash 机制表述修正

@@ -8171,7 +8171,15 @@ export class AgentDaemon {
 				// when that gate let the file stand.
 				const sessionFile = state.runtime.session.sessionFile;
 				if (sessionFile && existsSync(sessionFile)) {
-					await this.deleteSavedSessionFile(sessionFile).catch(() => undefined);
+					const removal = await this.deleteSavedSessionFile(sessionFile).catch((error) => {
+						this.log(`Empty-draft file removal failed for session ${state.activeSessionId}: ${String(error)}`);
+						return undefined;
+					});
+					if (removal && !removal.ok) {
+						this.log(
+							`Empty-draft file removal failed for session ${state.activeSessionId}: ${removal.error ?? "unknown error"}`,
+						);
+					}
 				}
 				discarded.push(state.runtime.session.sessionId);
 			} catch (error) {

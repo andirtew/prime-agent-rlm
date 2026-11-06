@@ -197,6 +197,20 @@ describe("AgentDaemon.discardEmptyDrafts", () => {
 		expect(closeSession).toHaveBeenCalledTimes(2);
 	});
 
+	it("skips the explicit file removal when the session has no file on disk", async () => {
+		const state = makeState({ id: "fileless", clients: [], entries: [{ type: "model_change" }] });
+		const { daemon, deleteSavedSessionFile } = makeDaemon([state]);
+		expect(await daemon.discardEmptyDrafts()).toEqual(["session-fileless"]);
+		expect(deleteSavedSessionFile).not.toHaveBeenCalled();
+	});
+
+	it("pins session_info as bookkeeping: not keep-worthy by itself", async () => {
+		const state = makeState({ id: "info-only", clients: [], entries: [{ type: "session_info" }] });
+		const { daemon } = makeDaemon([state]);
+		// A name would guard it earlier; a nameless session_info row is disposable.
+		expect(await daemon.discardEmptyDrafts()).toEqual(["session-info-only"]);
+	});
+
 	it("discards only the qualifying sessions of a mixed worker", async () => {
 		const draft = makeState({ id: "draft", clients: [{ authenticationRole: "supervisor" }] });
 		const messageful = makeState({ id: "real", clients: [], entries: [{ type: "message" }] });
