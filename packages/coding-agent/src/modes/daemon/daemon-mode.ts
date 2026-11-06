@@ -8161,9 +8161,26 @@ export class AgentDaemon {
 			const realClients = [...state.clients].filter((client) => client.authenticationRole !== "supervisor").length;
 			if (realClients > 0) continue;
 			if (state.runtime.session.isBashRunning || hasLiveSessionWork(state)) continue;
-			if (!this.isEmptyDraftContent(state)) continue;
+			if (!this.isDiscardableDraftContent(state)) continue;
 			try {
 				await this.closeSession(state, "killed");
+				// closeSession's own file gate uses the stricter hasUserContent
+				// semantics, where a model/effort/tier switch past the creation
+				// prefix counts as content and the file is kept. Discard semantics
+				// here treat config-only sessions as disposable, so finish the job
+				// when that gate let the file stand.
+				const sessionFile = state.runtime.session.sessionFile;
+				if (sessionFile && existsSync(sessionFile)) {
+					const removal = await this.deleteSavedSessionFile(sessionFile).catch((error) => {
+						this.log(`Empty-draft file removal failed for session ${state.activeSessionId}: ${String(error)}`);
+						return undefined;
+					});
+					if (removal && !removal.ok) {
+						this.log(
+							`Empty-draft file removal failed for session ${state.activeSessionId}: ${removal.error ?? "unknown error"}`,
+						);
+					}
+				}
 				discarded.push(state.runtime.session.sessionId);
 			} catch (error) {
 				this.log(
@@ -8172,6 +8189,31 @@ export class AgentDaemon {
 			}
 		}
 		return discarded;
+	}
+
+	/**
+	 * Discard-level emptiness: stricter than hasUserContent's "any entry past
+	 * the creation prefix" (a model/effort/tier switch alone keeps that one
+	 * happy). A session is disposable only when it holds no message, no custom
+	 * content, no label, no compaction record, no branch summary, no name (the
+	 * name guard lives in discardEmptyDrafts), and no scheduled job. Config-only
+	 * entries (model_change and friends) are session setup, not work: switching
+	 * a model and leaving is not a reason to keep a file.
+	 */
+	private isDiscardableDraftContent(state: ActiveSessionState): boolean {
+		if (this.hasScheduledJobsForSession(state.activeSessionId)) return false;
+		const contentEntries = state.runtime.session.sessionManager
+			.getEntries()
+			.filter(
+				(entry) =>
+					entry.type === "message" ||
+					entry.type === "custom_message" ||
+					entry.type === "custom" ||
+					entry.type === "label" ||
+					entry.type === "compaction" ||
+					entry.type === "branch_summary",
+			);
+		return contentEntries.length === 0;
 	}
 
 	private createUpdateRestartSession(state: ActiveSessionState): DaemonUpdateRestartSession | undefined {
