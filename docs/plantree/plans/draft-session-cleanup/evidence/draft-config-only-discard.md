@@ -35,3 +35,10 @@
 - 复核人：独立子代理（全新会话，逐行 diff + SessionEntry 全集 15 种逐一核对 + 自行重跑 12/12）
 - 结论：**PASS**，无阻塞缺陷。确认：白名单无用户价值遗漏（session_info 经 sessionName 守卫间接覆盖且谓词单点使用）；删文件复用 trash 优先的安全路径、时序无让出点、幂等；守卫顺序被测试真实检验
 - 三条低优先级建议（全部采纳于收尾提交）：① 删除失败补日志（ok:false 与异常两路）② sessionFile 缺失反向用例 + session_info 行为钉住 ③ evidence 文档 stash 机制表述修正
+
+## 落地
+
+- MERGE_COMMIT：`138cbfc8d296fcfb3f06d8ea390141568323db70`（tree 等价 ✓，远端一致）
+- 归档：`archive/draft-config-only-discard` → `9980d908964eef74476cffb54c36aa8aee41f567`，四方核对 OK
+- 清理：本地/远端 active 已删，worktree 与实验环境已清
+- 交付：**未安装现役**（等用户批准）
