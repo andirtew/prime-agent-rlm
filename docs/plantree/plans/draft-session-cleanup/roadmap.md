@@ -6,7 +6,7 @@
 
 ## In Progress
 
-（无）
+- [ ] `draft-config-only-discard`：仅配置变更（切模型/档位）的空会话也丢弃，计划见 [topics/config-only-draft-discard.md](topics/config-only-draft-discard.md)
 
 ## Next
 
